@@ -629,8 +629,10 @@ func (s *Service) periodicSync() {
 		currBlock := s.ledger.LastRound()
 		select {
 		case <-s.ctx.Done():
+			s.log.Warnf("Done: %d", currBlock)
 			return
 		case <-s.ledger.WaitMem(currBlock + 1):
+			s.log.Warnf("Advanced: %d", currBlock)
 			// Ledger moved forward; likely to be by the agreement service.
 			stuckInARow = 0
 			// go to sleep for a short while, for a random duration.
@@ -638,13 +640,16 @@ func (s *Service) periodicSync() {
 			sleepDuration = time.Duration(crypto.RandUint63()) % s.roundTimeEstimate
 			continue
 		case <-s.syncNow:
+			s.log.Warnf("SyncNow1: %d", currBlock)
 			if s.parallelBlocks == 0 || s.ledger.IsWritingCatchpointDataFile() || s.ledger.IsBehindCommittingDeltas() {
 				continue
 			}
 			s.suspendForLedgerOps = false
 			s.log.Info("Immediate resync triggered; resyncing")
+			s.log.Warnf("SyncNow2: %d", currBlock)
 			s.sync()
 		case <-time.After(sleepDuration):
+			s.log.Warnf("Scheduled1: %d", currBlock)
 			if sleepDuration < s.roundTimeEstimate || s.cfg.DisableNetworking {
 				sleepDuration = s.roundTimeEstimate
 				continue
@@ -665,8 +670,10 @@ func (s *Service) periodicSync() {
 
 			s.suspendForLedgerOps = false
 			s.log.Info("It's been too long since our ledger advanced; resyncing")
+			s.log.Warnf("Scheduled2: %d", currBlock)
 			s.sync()
 		case cert := <-s.unmatchedPendingCertificates:
+			s.log.Warnf("Cert: %d", currBlock)
 			// the agreement service has a valid certificate for a block, but not the block itself.
 			if s.cfg.DisableNetworking {
 				s.log.Warnf("the local node is missing block %d, however, the catchup would not be able to provide it when the network is disabled.", cert.Cert.Round)
