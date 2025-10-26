@@ -499,7 +499,7 @@ func (s *Service) pipelinedFetch(seedLookback uint64) {
 
 	ps := createPeerSelector(s.net)
 	if _, err := ps.getNextPeer(); err != nil {
-		s.log.Debugf("pipelinedFetch: was unable to obtain a peer to retrieve the block from: %v", err)
+		s.log.Warnf("pipelinedFetch: was unable to obtain a peer to retrieve the block from: %v", err)
 		return
 	}
 
@@ -518,6 +518,7 @@ func (s *Service) pipelinedFetch(seedLookback uint64) {
 		// launch N=parallelRequests block download go routines.
 		for nextRound < firstRound+basics.Round(limitedParallelRequests) {
 			if s.roundIsNotSupported(nextRound) {
+				s.log.Warnf("NOT Supported round detected at round %d; stopping pipelined fetch", nextRound)
 				// Break out of the loop to avoid fetching
 				// blocks that we don't support.  If there
 				// are no more supported blocks to fetch,
@@ -548,7 +549,7 @@ func (s *Service) pipelinedFetch(seedLookback uint64) {
 
 			if !completedOK {
 				// there was an error; defer will cancel the pipeline
-				s.log.Debugf("pipelinedFetch: quitting on fetchAndWrite error (firstRound=%d, nextRound=%d)", firstRound-1, nextRound)
+				s.log.Warnf("pipelinedFetch: quitting on fetchAndWrite error (firstRound=%d, nextRound=%d)", firstRound-1, nextRound)
 				return
 			}
 
@@ -572,14 +573,14 @@ func (s *Service) pipelinedFetch(seedLookback uint64) {
 			// if we're writing a catchpoint file, stop catching up to reduce the memory pressure. Once we finish writing the file we
 			// could resume with the catchup.
 			if s.ledger.IsWritingCatchpointDataFile() {
-				s.log.Info("Catchup is stopping due to catchpoint file being written")
+				s.log.Warnf("Catchup is stopping due to catchpoint file being written")
 				s.suspendForLedgerOps = true
 				return
 			}
 
 			// if the ledger has too many non-flushed account changes, stop catching up to reduce the memory pressure.
 			if s.ledger.IsBehindCommittingDeltas() {
-				s.log.Info("Catchup is stopping due to too many non-flushed account changes")
+				s.log.Warnf("Catchup is stopping due to too many non-flushed account changes")
 				s.suspendForLedgerOps = true
 				return
 			}
@@ -704,7 +705,7 @@ func (s *Service) sync() {
 
 	timeInNS := start.UnixNano()
 	if !s.syncStartNS.CompareAndSwap(0, timeInNS) {
-		s.log.Infof("resuming previous sync from %d (now=%d)", s.syncStartNS.Load(), timeInNS)
+		s.log.Warnf("resuming previous sync from %d (now=%d)", s.syncStartNS.Load(), timeInNS)
 	}
 
 	pr := s.ledger.LastRound()
