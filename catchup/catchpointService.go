@@ -665,7 +665,7 @@ func (cs *CatchpointCatchupService) fetchBlock(round basics.Round, retryCount ui
 	psp, err = cs.blocksDownloadPeerSelector.getNextPeer()
 	if err != nil {
 		if errors.Is(err, errPeerSelectorNoPeerPoolsAvailable) {
-			cs.log.Infof("fetchBlock: unable to obtain a list of peers to retrieve the latest block from; will retry shortly.")
+			cs.log.Warnf("fetchBlock: unable to obtain a list of peers to retrieve the latest block from; will retry shortly.")
 			// this is a possible on startup, since the network package might have yet to retrieve the list of peers.
 			time.Sleep(noPeersAvailableSleepInterval)
 			return nil, nil, time.Duration(0), psp, false, nil
