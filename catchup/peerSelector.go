@@ -26,6 +26,7 @@ import (
 	"github.com/algorand/go-deadlock"
 
 	"github.com/algorand/go-algorand/crypto"
+	"github.com/algorand/go-algorand/logging"
 	"github.com/algorand/go-algorand/network"
 )
 
@@ -127,6 +128,7 @@ type peerSelector interface {
 type rankPooledPeerSelector struct {
 	mu  deadlock.Mutex
 	net peersRetriever
+	log logging.Logger
 	// peerClasses is the list of peer classes we want to have in the rankPooledPeerSelector.
 	peerClasses []peerClass
 	// pools is the list of peer pools, each pool contains a list of peers with the same rank.
@@ -296,9 +298,10 @@ func (hs *historicStats) push(value int, counter uint64, class peerClass) (avera
 }
 
 // makeRankPooledPeerSelector creates a rankPooledPeerSelector, given a peersRetriever and peerClass array.
-func makeRankPooledPeerSelector(net peersRetriever, initialPeersClasses []peerClass) *rankPooledPeerSelector {
+func makeRankPooledPeerSelector(net peersRetriever, log logging.Logger, initialPeersClasses []peerClass) *rankPooledPeerSelector {
 	selector := &rankPooledPeerSelector{
 		net:         net,
+		log:         log.With("Context", "peerSelector"),
 		peerClasses: initialPeersClasses,
 	}
 	return selector
@@ -310,8 +313,15 @@ func makeRankPooledPeerSelector(net peersRetriever, initialPeersClasses []peerCl
 func (ps *rankPooledPeerSelector) getNextPeer() (psp *peerSelectorPeer, err error) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
+	
+	ps.log.Debugf("getNextPeer: starting with %d pools", len(ps.pools))
+	
 	ps.refreshAvailablePeers()
-	for _, pool := range ps.pools {
+	
+	ps.log.Debugf("getNextPeer: after refresh, have %d pools", len(ps.pools))
+	
+	for i, pool := range ps.pools {
+		ps.log.Debugf("getNextPeer: pool[%d] has rank %d and %d peers", i, pool.rank, len(pool.peers))
 		if len(pool.peers) > 0 {
 			// the previous call to refreshAvailablePeers ensure that this would always be the case;
 			// however, if we do have a zero length pool, we don't want to divide by zero, so this would
@@ -319,9 +329,12 @@ func (ps *rankPooledPeerSelector) getNextPeer() (psp *peerSelectorPeer, err erro
 			// pick one of the peers from this pool at random
 			peerIdx := crypto.RandUint64() % uint64(len(pool.peers))
 			psp = &peerSelectorPeer{pool.peers[peerIdx].peer, pool.peers[peerIdx].class.peerClass}
+			ps.log.Debugf("getNextPeer: selected peer from pool[%d] at index %d, peer address: %s", i, peerIdx, peerAddress(psp.Peer))
 			return
 		}
 	}
+	
+	ps.log.Warnf("getNextPeer: no peers available in any pool, returning errPeerSelectorNoPeerPoolsAvailable")
 	return nil, errPeerSelectorNoPeerPoolsAvailable
 }
 
@@ -455,7 +468,10 @@ func peerAddress(peer network.Peer) string {
 // refreshAvailablePeers reload the available peers from the network package, add new peers along with their
 // corresponding initial rank, and deletes peers that have been dropped by the network package.
 func (ps *rankPooledPeerSelector) refreshAvailablePeers() {
+	ps.log.Debugf("refreshAvailablePeers: starting refresh with %d pools", len(ps.pools))
+	
 	existingPeers := make(map[network.PeerOption]map[string]bool)
+	totalExistingPeers := 0
 	for _, pool := range ps.pools {
 		for _, localPeer := range pool.peers {
 			if peerAddress := peerAddress(localPeer.peer); peerAddress != "" {
@@ -464,50 +480,90 @@ func (ps *rankPooledPeerSelector) refreshAvailablePeers() {
 					existingPeers[localPeer.class.peerClass] = make(map[string]bool)
 				}
 				existingPeers[localPeer.class.peerClass][peerAddress] = true
+				totalExistingPeers++
+			} else {
+				ps.log.Debugf("refreshAvailablePeers: found peer with empty address in existing pools")
 			}
 		}
 	}
+	
+	ps.log.Debugf("refreshAvailablePeers: found %d existing peers across %d peer classes", totalExistingPeers, len(existingPeers))
+	
 	sortNeeded := false
-	for _, initClass := range ps.peerClasses {
+	newPeersAdded := 0
+	peersSkippedEmptyAddress := 0
+	
+	for classIdx, initClass := range ps.peerClasses {
 		peers := ps.net.GetPeers(initClass.peerClass)
-		for _, peer := range peers {
-			peerAddress := peerAddress(peer)
-			if peerAddress == "" {
+		ps.log.Debugf("refreshAvailablePeers: peerClass[%d] (%v) returned %d peers from network", classIdx, initClass.peerClass, len(peers))
+		
+		for peerIdx, peer := range peers {
+			peerAddr := peerAddress(peer)
+			if peerAddr == "" {
+				peersSkippedEmptyAddress++
+				ps.log.Debugf("refreshAvailablePeers: skipping peer[%d] from class[%d] due to empty address (peer type: %T)", peerIdx, classIdx, peer)
 				continue
 			}
-			if _, has := existingPeers[initClass.peerClass][peerAddress]; has {
+			if _, has := existingPeers[initClass.peerClass][peerAddr]; has {
 				// Setting to false instead of deleting the element to be safe against duplicate peer addresses.
-				existingPeers[initClass.peerClass][peerAddress] = false
+				existingPeers[initClass.peerClass][peerAddr] = false
+				ps.log.Debugf("refreshAvailablePeers: peer %s already exists in class %v", peerAddr, initClass.peerClass)
 				continue
 			}
 			// it's an entry which we did not have before.
+			ps.log.Debugf("refreshAvailablePeers: adding new peer %s to class %v with initial rank %d", peerAddr, initClass.peerClass, initClass.initialRank)
 			sortNeeded = ps.addToPool(peer, initClass.initialRank, initClass, makeHistoricStatus(peerHistoryWindowSize, initClass)) || sortNeeded
+			newPeersAdded++
 		}
 	}
+	
+	ps.log.Debugf("refreshAvailablePeers: added %d new peers, skipped %d peers with empty addresses", newPeersAdded, peersSkippedEmptyAddress)
 
 	// delete from the pools array the peers that do not exist on the network anymore.
+	peersRemoved := 0
+	poolsRemoved := 0
+	
 	for poolIdx := len(ps.pools) - 1; poolIdx >= 0; poolIdx-- {
 		pool := ps.pools[poolIdx]
+		initialPeerCount := len(pool.peers)
+		
 		for peerIdx := len(pool.peers) - 1; peerIdx >= 0; peerIdx-- {
 			peer := pool.peers[peerIdx].peer
-			if peerAddress := peerAddress(peer); peerAddress != "" {
-				if toRemove := existingPeers[pool.peers[peerIdx].class.peerClass][peerAddress]; toRemove {
+			if peerAddr := peerAddress(peer); peerAddr != "" {
+				if toRemove := existingPeers[pool.peers[peerIdx].class.peerClass][peerAddr]; toRemove {
 					// need to be removed.
+					ps.log.Debugf("refreshAvailablePeers: removing peer %s from pool[%d] (rank %d)", peerAddr, poolIdx, pool.rank)
 					pool.peers = append(pool.peers[:peerIdx], pool.peers[peerIdx+1:]...)
+					peersRemoved++
 				}
+			} else {
+				ps.log.Debugf("refreshAvailablePeers: found peer with empty address during removal check in pool[%d]", poolIdx)
 			}
 		}
+		
 		if len(pool.peers) == 0 {
+			ps.log.Debugf("refreshAvailablePeers: removing empty pool[%d] (rank %d), had %d peers initially", poolIdx, pool.rank, initialPeerCount)
 			ps.pools = append(ps.pools[:poolIdx], ps.pools[poolIdx+1:]...)
+			poolsRemoved++
 			sortNeeded = true
 		} else {
 			ps.pools[poolIdx] = pool
 		}
 	}
+	
+	ps.log.Debugf("refreshAvailablePeers: cleanup complete - removed %d peers and %d empty pools", peersRemoved, poolsRemoved)
 
 	if sortNeeded {
+		ps.log.Debugf("refreshAvailablePeers: sorting pools")
 		ps.sort()
 	}
+	
+	finalPoolCount := len(ps.pools)
+	totalFinalPeers := 0
+	for _, pool := range ps.pools {
+		totalFinalPeers += len(pool.peers)
+	}
+	ps.log.Debugf("refreshAvailablePeers: refresh complete - final state: %d pools with %d total peers", finalPoolCount, totalFinalPeers)
 }
 
 // findPeer look into the peer pool and find the given peer.

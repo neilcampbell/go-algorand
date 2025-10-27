@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/algorand/go-algorand/crypto"
+	"github.com/algorand/go-algorand/logging"
 	"github.com/algorand/go-algorand/network"
 	"github.com/algorand/go-algorand/protocol"
 	"github.com/algorand/go-algorand/test/partitiontest"
@@ -134,7 +135,7 @@ func TestPeerSelector_RankPeer(t *testing.T) {
 	peerSelector := makeRankPooledPeerSelector(
 		makePeersRetrieverStub(func(options ...network.PeerOption) []network.Peer {
 			return peers
-		}), []peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes}},
+		}), logging.TestingLog(t), []peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes}},
 	)
 
 	psp, err := peerSelector.getNextPeer()
@@ -201,7 +202,7 @@ func TestPeerSelector_PeerDownloadRanking(t *testing.T) {
 				}
 			}
 			return
-		}), []peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes},
+		}), logging.TestingLog(t), []peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes},
 			{initialRank: peerRankInitialSecondPriority, peerClass: network.PeersPhonebookRelays}},
 	)
 	archivalPeer, err := peerSelector.getNextPeer()
@@ -243,7 +244,7 @@ func TestPeerSelector_FindMissingPeer(t *testing.T) {
 	peerSelector := makeRankPooledPeerSelector(
 		makePeersRetrieverStub(func(options ...network.PeerOption) []network.Peer {
 			return []network.Peer{}
-		}), []peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes}},
+		}), logging.TestingLog(t), []peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes}},
 	)
 
 	poolIdx, peerIdx := peerSelector.findPeer(&peerSelectorPeer{mockHTTPPeer{address: "abcd"}, 0})
@@ -268,7 +269,7 @@ func TestPeerSelector_HistoricData(t *testing.T) {
 				}
 			}
 			return
-		}), []peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes},
+		}), logging.TestingLog(t), []peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes},
 			{initialRank: peerRankInitialSecondPriority, peerClass: network.PeersPhonebookRelays}},
 	)
 
@@ -342,7 +343,7 @@ func TestPeerSelector_PeersDownloadError(t *testing.T) {
 				}
 			}
 			return
-		}), []peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes},
+		}), logging.TestingLog(t), []peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes},
 			{initialRank: peerRankInitialSecondPriority, peerClass: network.PeersPhonebookRelays}},
 	)
 
@@ -418,7 +419,7 @@ func TestPeerSelector_Penalty(t *testing.T) {
 				}
 			}
 			return
-		}), []peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes},
+		}), logging.TestingLog(t), []peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes},
 			{initialRank: peerRankInitialSecondPriority, peerClass: network.PeersPhonebookRelays}},
 	)
 
@@ -483,7 +484,7 @@ func TestPeerSelector_PeerDownloadDurationToRank(t *testing.T) {
 				}
 			}
 			return
-		}), []peerClass{
+		}), logging.TestingLog(t), []peerClass{
 			{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookRelays},
 			{initialRank: peerRankInitialSecondPriority, peerClass: network.PeersConnectedOut},
 			{initialRank: peerRankInitialThirdPriority, peerClass: network.PeersPhonebookArchivalNodes},
@@ -582,7 +583,7 @@ func TestPeerSelector_ClassUpperBound(t *testing.T) {
 				}
 			}
 			return
-		}), []peerClass{pClass})
+		}), logging.TestingLog(t), []peerClass{pClass})
 
 	_, err := peerSelector.getNextPeer()
 	require.NoError(t, err)
@@ -617,7 +618,7 @@ func TestPeerSelector_ClassLowerBound(t *testing.T) {
 				}
 			}
 			return
-		}), []peerClass{pClass})
+		}), logging.TestingLog(t), []peerClass{pClass})
 
 	_, err := peerSelector.getNextPeer()
 	require.NoError(t, err)
@@ -649,7 +650,7 @@ func TestPeerSelector_EvictionAndUpgrade(t *testing.T) {
 				}
 			}
 			return
-		}), []peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes},
+		}), logging.TestingLog(t), []peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes},
 			{initialRank: peerRankInitialSecondPriority, peerClass: network.PeersPhonebookRelays}},
 	)
 

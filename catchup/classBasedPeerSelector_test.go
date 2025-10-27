@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/algorand/go-algorand/logging"
 	"github.com/algorand/go-algorand/network"
 	"github.com/algorand/go-algorand/test/partitiontest"
 	"github.com/stretchr/testify/require"
@@ -434,7 +435,7 @@ func TestClassBasedPeerSelector_integration(t *testing.T) {
 		return nil
 	})
 	// Create a class based peer selector with a few wrapped peer selectors
-	cps := makeCatchpointPeerSelector(net).(*classBasedPeerSelector)
+	cps := makeCatchpointPeerSelector(net, logging.TestingLog(t)).(*classBasedPeerSelector)
 
 	// We should get the peer from the first priority selector, PeersPhonebookRelays
 	peerResult, err := cps.getNextPeer()

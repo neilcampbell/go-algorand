@@ -20,6 +20,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/algorand/go-algorand/logging"
 	"github.com/algorand/go-algorand/network"
 	"github.com/algorand/go-deadlock"
 )
@@ -142,17 +143,17 @@ type wrappedPeerSelector struct {
 
 // makeCatchpointPeerSelector returns a classBasedPeerSelector that selects peers based on their class and response behavior.
 // These are the preferred configurations for the catchpoint service.
-func makeCatchpointPeerSelector(net peersRetriever) peerSelector {
+func makeCatchpointPeerSelector(net peersRetriever, log logging.Logger) peerSelector {
 	wrappedPeerSelectors := []*wrappedPeerSelector{
 		{
 			peerClass: network.PeersPhonebookRelays,
-			peerSelector: makeRankPooledPeerSelector(net,
+			peerSelector: makeRankPooledPeerSelector(net, log,
 				[]peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookRelays}}),
 			toleranceFactor: 3,
 		},
 		{
 			peerClass: network.PeersPhonebookArchivalNodes,
-			peerSelector: makeRankPooledPeerSelector(net,
+			peerSelector: makeRankPooledPeerSelector(net, log,
 				[]peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes}}),
 			toleranceFactor: 10,
 		},
