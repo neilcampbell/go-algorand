@@ -313,13 +313,13 @@ func makeRankPooledPeerSelector(net peersRetriever, log logging.Logger, initialP
 func (ps *rankPooledPeerSelector) getNextPeer() (psp *peerSelectorPeer, err error) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
-	
+
 	ps.log.Debugf("getNextPeer: starting with %d pools", len(ps.pools))
-	
+
 	ps.refreshAvailablePeers()
-	
+
 	ps.log.Debugf("getNextPeer: after refresh, have %d pools", len(ps.pools))
-	
+
 	for i, pool := range ps.pools {
 		ps.log.Debugf("getNextPeer: pool[%d] has rank %d and %d peers", i, pool.rank, len(pool.peers))
 		if len(pool.peers) > 0 {
@@ -333,7 +333,7 @@ func (ps *rankPooledPeerSelector) getNextPeer() (psp *peerSelectorPeer, err erro
 			return
 		}
 	}
-	
+
 	ps.log.Warnf("getNextPeer: no peers available in any pool, returning errPeerSelectorNoPeerPoolsAvailable")
 	return nil, errPeerSelectorNoPeerPoolsAvailable
 }
@@ -469,7 +469,7 @@ func peerAddress(peer network.Peer) string {
 // corresponding initial rank, and deletes peers that have been dropped by the network package.
 func (ps *rankPooledPeerSelector) refreshAvailablePeers() {
 	ps.log.Debugf("refreshAvailablePeers: starting refresh with %d pools", len(ps.pools))
-	
+
 	existingPeers := make(map[network.PeerOption]map[string]bool)
 	totalExistingPeers := 0
 	for _, pool := range ps.pools {
@@ -486,17 +486,17 @@ func (ps *rankPooledPeerSelector) refreshAvailablePeers() {
 			}
 		}
 	}
-	
+
 	ps.log.Debugf("refreshAvailablePeers: found %d existing peers across %d peer classes", totalExistingPeers, len(existingPeers))
-	
+
 	sortNeeded := false
 	newPeersAdded := 0
 	peersSkippedEmptyAddress := 0
-	
+
 	for classIdx, initClass := range ps.peerClasses {
 		peers := ps.net.GetPeers(initClass.peerClass)
 		ps.log.Debugf("refreshAvailablePeers: peerClass[%d] (%v) returned %d peers from network", classIdx, initClass.peerClass, len(peers))
-		
+
 		for peerIdx, peer := range peers {
 			peerAddr := peerAddress(peer)
 			if peerAddr == "" {
@@ -516,17 +516,17 @@ func (ps *rankPooledPeerSelector) refreshAvailablePeers() {
 			newPeersAdded++
 		}
 	}
-	
+
 	ps.log.Debugf("refreshAvailablePeers: added %d new peers, skipped %d peers with empty addresses", newPeersAdded, peersSkippedEmptyAddress)
 
 	// delete from the pools array the peers that do not exist on the network anymore.
 	peersRemoved := 0
 	poolsRemoved := 0
-	
+
 	for poolIdx := len(ps.pools) - 1; poolIdx >= 0; poolIdx-- {
 		pool := ps.pools[poolIdx]
 		initialPeerCount := len(pool.peers)
-		
+
 		for peerIdx := len(pool.peers) - 1; peerIdx >= 0; peerIdx-- {
 			peer := pool.peers[peerIdx].peer
 			if peerAddr := peerAddress(peer); peerAddr != "" {
@@ -540,7 +540,7 @@ func (ps *rankPooledPeerSelector) refreshAvailablePeers() {
 				ps.log.Debugf("refreshAvailablePeers: found peer with empty address during removal check in pool[%d]", poolIdx)
 			}
 		}
-		
+
 		if len(pool.peers) == 0 {
 			ps.log.Debugf("refreshAvailablePeers: removing empty pool[%d] (rank %d), had %d peers initially", poolIdx, pool.rank, initialPeerCount)
 			ps.pools = append(ps.pools[:poolIdx], ps.pools[poolIdx+1:]...)
@@ -550,14 +550,14 @@ func (ps *rankPooledPeerSelector) refreshAvailablePeers() {
 			ps.pools[poolIdx] = pool
 		}
 	}
-	
+
 	ps.log.Debugf("refreshAvailablePeers: cleanup complete - removed %d peers and %d empty pools", peersRemoved, poolsRemoved)
 
 	if sortNeeded {
 		ps.log.Debugf("refreshAvailablePeers: sorting pools")
 		ps.sort()
 	}
-	
+
 	finalPoolCount := len(ps.pools)
 	totalFinalPeers := 0
 	for _, pool := range ps.pools {

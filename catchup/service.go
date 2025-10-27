@@ -242,6 +242,7 @@ func (s *Service) innerFetch(ctx context.Context, r basics.Round, peer network.P
 		select {
 		case <-ctx.Done():
 		case <-ledgerWaitCh:
+			s.log.Debugf("GOT %d", r)
 			cf()
 		}
 	}()
@@ -803,6 +804,7 @@ func (s *Service) fetchRound(cert agreement.Certificate, verifier *agreement.Asy
 				// Note, there is no exit condition on too many retries as per the function contract.
 				if count, ok := peerErrors[peer]; ok {
 					if count > errNoBlockForRoundThreshold {
+						logging.Base().Debugf("GOT TO SLEEP")
 						time.Sleep(50 * time.Millisecond)
 					}
 					if count > errNoBlockForRoundThreshold*10 {
